@@ -1,12 +1,10 @@
 {
-  "name": "@codefuturist/email-mcp",
+  "name": "@kononenko-e/email-mcp",
   "version": "0.2.3",
-  "mcpName": "io.github.codefuturist/email-mcp",
+  "mcpName": "io.github.kononenko-e/email-mcp",
   "description": "Email MCP server with IMAP + SMTP support",
   "type": "module",
-  "bin": {
-    "email-mcp": "./dist/main.js"
-  },
+  "bin": "./dist/main.js",
   "main": "./dist/main.js",
   "types": "./dist/main.d.ts",
   "files": [
@@ -62,17 +60,17 @@
     "nodejs"
   ],
   "author": {
-    "name": "codefuturist",
-    "url": "https://github.com/codefuturist"
+    "name": "kononenko-e",
+    "url": "https://github.com/kononenko-e"
   },
   "license": "LGPL-3.0-or-later",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/codefuturist/email-mcp.git"
+    "url": "git+https://github.com/kononenko-e/email-mcp.git"
   },
-  "homepage": "https://github.com/codefuturist/email-mcp#readme",
+  "homepage": "https://github.com/kononenko-e/email-mcp#readme",
   "bugs": {
-    "url": "https://github.com/codefuturist/email-mcp/issues"
+    "url": "https://github.com/kononenko-e/email-mcp/issues"
   },
   "dependencies": {
     "@clack/prompts": "^1.0.1",

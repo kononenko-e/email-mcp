@@ -70,6 +70,10 @@ export default class WatcherService {
     this.accounts = accounts;
   }
 
+  setAccounts(accounts: AccountConfig[]): void {
+    this.accounts = accounts;
+  }
+
   async start(): Promise<void> {
     if (!this.config.enabled) return;
 

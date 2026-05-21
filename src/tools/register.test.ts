@@ -3,6 +3,7 @@ import registerAllTools from './register.js';
 
 // Mock ALL tool registration imports
 vi.mock('./accounts.tool.js', () => ({ default: vi.fn() }));
+vi.mock('./account-config.tool.js', () => ({ default: vi.fn() }));
 vi.mock('./analytics.tool.js', () => ({ default: vi.fn() }));
 vi.mock('./attachments.tool.js', () => ({ default: vi.fn() }));
 vi.mock('./bulk.tool.js', () => ({ default: vi.fn() }));
@@ -25,6 +26,7 @@ vi.mock('./templates.tool.js', () => ({
 vi.mock('./thread.tool.js', () => ({ default: vi.fn() }));
 vi.mock('./watcher.tool.js', () => ({ default: vi.fn() }));
 
+import registerAccountConfigTools from './account-config.tool.js';
 import registerAccountsTools from './accounts.tool.js';
 import registerBulkTools from './bulk.tool.js';
 import registerDraftTools from './drafts.tool.js';
@@ -81,9 +83,11 @@ describe('registerAllTools', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     // Read tools should always be registered
     expect(registerAccountsTools).toHaveBeenCalled();
+    expect(registerAccountConfigTools).toHaveBeenCalled();
     expect(registerEmailsTools).toHaveBeenCalled();
     // Write tools should be registered when NOT read-only
     expect(registerSendTools).toHaveBeenCalled();
@@ -110,9 +114,11 @@ describe('registerAllTools', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     // Read tools should still be registered
     expect(registerAccountsTools).toHaveBeenCalled();
+    expect(registerAccountConfigTools).toHaveBeenCalled();
     expect(registerEmailsTools).toHaveBeenCalled();
     // Write tools should NOT be registered
     expect(registerSendTools).not.toHaveBeenCalled();

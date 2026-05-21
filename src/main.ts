@@ -112,6 +112,7 @@ async function runServer(): Promise<void> {
     schedulerService,
     watcherService,
     hooksService,
+    oauthService,
   );
   registerAllResources(server, connections, imapService, templateService, schedulerService);
   registerAllPrompts(server);
@@ -228,6 +229,7 @@ async function runHttpServer(port: number): Promise<void> {
       schedulerService,
       watcherService,
       hooksService,
+      oauthService,
     );
     registerAllResources(server, connections, imapService, templateService, schedulerService);
     registerAllPrompts(server);

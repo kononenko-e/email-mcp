@@ -152,7 +152,7 @@ function normalizeOAuth2(raw: NonNullable<RawAccountConfig['oauth2']>): OAuth2Co
   };
 }
 
-function normalizeAccount(raw: RawAccountConfig): AccountConfig {
+export function normalizeRawAccount(raw: RawAccountConfig): AccountConfig {
   return {
     name: raw.name,
     email: raw.email,
@@ -237,7 +237,41 @@ function normalizeConfig(raw: RawAppConfig): AppConfig {
         calendarConfirm: raw.settings.hooks.calendar_confirm ?? true,
       },
     },
-    accounts: raw.accounts.map(normalizeAccount),
+    accounts: raw.accounts.map(normalizeRawAccount),
+  };
+}
+
+export function createDefaultRawConfig(accounts: RawAccountConfig[] = []): RawAppConfig {
+  return {
+    settings: {
+      rate_limit: 10,
+      read_only: false,
+      watcher: {
+        enabled: false,
+        folders: ['INBOX'],
+        idle_timeout: 1740,
+      },
+      hooks: {
+        on_new_email: 'notify',
+        preset: 'priority-focus',
+        auto_label: false,
+        auto_flag: false,
+        batch_delay: 5,
+        rules: [],
+        alerts: {
+          desktop: false,
+          sound: false,
+          urgency_threshold: 'high',
+          webhook_url: '',
+          webhook_events: ['urgent', 'high'],
+        },
+        auto_calendar: false,
+        calendar_name: '',
+        calendar_alarm_minutes: 15,
+        calendar_confirm: true,
+      },
+    },
+    accounts,
   };
 }
 

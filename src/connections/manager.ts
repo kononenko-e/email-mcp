@@ -54,6 +54,13 @@ export default class ConnectionManager implements IConnectionManager {
     return [...this.accounts.keys()];
   }
 
+  setAccounts(accounts: AccountConfig[]): void {
+    this.accounts.clear();
+    accounts.forEach((account) => {
+      this.accounts.set(account.name, account);
+    });
+  }
+
   // -------------------------------------------------------------------------
   // IMAP
   // -------------------------------------------------------------------------

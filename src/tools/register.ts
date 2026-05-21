@@ -11,12 +11,14 @@ import type CalendarService from '../services/calendar.service.js';
 import type HooksService from '../services/hooks.service.js';
 import type ImapService from '../services/imap.service.js';
 import type LocalCalendarService from '../services/local-calendar.service.js';
+import type OAuthService from '../services/oauth.service.js';
 import type RemindersService from '../services/reminders.service.js';
 import type SchedulerService from '../services/scheduler.service.js';
 import type SmtpService from '../services/smtp.service.js';
 import type TemplateService from '../services/template.service.js';
 import type WatcherService from '../services/watcher.service.js';
 import type { AppConfig } from '../types/index.js';
+import registerAccountConfigTools from './account-config.tool.js';
 import registerAccountsTools from './accounts.tool.js';
 import registerAnalyticsTools from './analytics.tool.js';
 import registerAttachmentTools from './attachments.tool.js';
@@ -50,11 +52,13 @@ export default function registerAllTools(
   schedulerService: SchedulerService,
   watcherService: WatcherService,
   hooksService: HooksService,
+  oauthService: OAuthService,
 ): void {
   const { readOnly } = config.settings;
 
   // Read tools — always registered
   registerAccountsTools(server, connections);
+  registerAccountConfigTools(server, { connections, watcherService }, oauthService);
   registerMailboxesTools(server, imapService);
   registerEmailsTools(server, imapService);
   registerAttachmentTools(server, imapService);
