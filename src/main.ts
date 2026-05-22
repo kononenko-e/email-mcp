@@ -19,7 +19,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 
-import { loadConfig } from './config/loader.js';
+import { loadConfigOrDefault } from './config/loader.js';
 import ConnectionManager from './connections/manager.js';
 import { bindServer, markInitialized, mcpLog } from './logging.js';
 import registerAllPrompts from './prompts/register.js';
@@ -81,7 +81,7 @@ Examples:
 `.trim();
 
 async function runServer(): Promise<void> {
-  const config = await loadConfig();
+  const config = await loadConfigOrDefault();
 
   const oauthService = new OAuthService();
   const connections = new ConnectionManager(config.accounts, oauthService);
@@ -195,7 +195,7 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
 }
 
 async function runHttpServer(port: number): Promise<void> {
-  const config = await loadConfig();
+  const config = await loadConfigOrDefault();
 
   // Shared services — created once for the process lifetime
   const oauthService = new OAuthService();

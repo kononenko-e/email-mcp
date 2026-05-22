@@ -275,6 +275,15 @@ export function createDefaultRawConfig(accounts: RawAccountConfig[] = []): RawAp
   };
 }
 
+/**
+ * Create normalized default runtime config.
+ * Used when the MCP server should boot without a config file so bootstrap
+ * tools can create the first account.
+ */
+export function createDefaultConfig(): AppConfig {
+  return normalizeConfig(createDefaultRawConfig([]));
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -318,6 +327,19 @@ export async function loadConfig(configPath?: string): Promise<AppConfig> {
       `or create a config file at: ${configPath ?? CONFIG_FILE}\n\n` +
       `Run 'email-mcp setup' for interactive configuration.`,
   );
+}
+
+/**
+ * Load config when available, otherwise fall back to an empty default config.
+ * This lets the MCP server start and expose bootstrap tools even before the
+ * first account is configured.
+ */
+export async function loadConfigOrDefault(configPath?: string): Promise<AppConfig> {
+  try {
+    return await loadConfig(configPath);
+  } catch {
+    return createDefaultConfig();
+  }
 }
 
 /**
