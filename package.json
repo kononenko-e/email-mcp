@@ -1,10 +1,12 @@
 {
   "name": "@kononenko-e/email-mcp",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "mcpName": "io.github.kononenko-e/email-mcp",
   "description": "Email MCP server with IMAP + SMTP support",
   "type": "module",
-  "bin": "./dist/main.js",
+  "bin": {
+    "email-mcp": "./dist/main.js"
+  },
   "main": "./dist/main.js",
   "types": "./dist/main.d.ts",
   "files": [
