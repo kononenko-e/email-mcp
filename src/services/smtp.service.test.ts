@@ -38,7 +38,9 @@ function createMockRateLimiter(allowed = true) {
 }
 
 function createMockImapService() {
-  return {} as unknown as ImapService;
+  return {
+    appendSent: vi.fn().mockResolvedValue(undefined),
+  } as unknown as ImapService;
 }
 
 // ---------------------------------------------------------------------------

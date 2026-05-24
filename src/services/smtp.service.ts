@@ -45,10 +45,51 @@ export default class SmtpService {
       ...(options.html ? { html: options.body } : { text: options.body }),
     });
 
+    // Save a copy to the Sent folder via IMAP
+    await this.saveSentCopy(accountName, account, {
+      to: options.to.join(', '),
+      cc: options.cc?.join(', '),
+      subject: options.subject,
+      body: options.body,
+      html: options.html,
+      messageId: result.messageId,
+    });
+
     return {
       messageId: result.messageId ?? '',
       status: 'sent',
     };
+  }
+
+  private async saveSentCopy(
+    accountName: string,
+    account: { email: string; fullName?: string },
+    options: {
+      to: string;
+      cc?: string;
+      subject: string;
+      body: string;
+      html?: boolean;
+      messageId?: string;
+      inReplyTo?: string;
+      references?: string;
+    },
+  ): Promise<void> {
+    try {
+      await this.imapService.appendSent(accountName, {
+        from: account.fullName ? `"${account.fullName}" <${account.email}>` : account.email,
+        to: options.to,
+        cc: options.cc,
+        subject: options.subject,
+        body: options.body,
+        html: options.html,
+        messageId: options.messageId,
+        inReplyTo: options.inReplyTo,
+        references: options.references,
+      });
+    } catch {
+      // Non-critical: don't fail the send if Sent append fails
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -108,6 +149,18 @@ export default class SmtpService {
       ...(options.html ? { html: options.body } : { text: options.body }),
     });
 
+    // Save a copy to the Sent folder via IMAP
+    await this.saveSentCopy(accountName, account, {
+      to: to.join(', '),
+      cc: cc.length > 0 ? cc.join(', ') : undefined,
+      subject,
+      body: options.body,
+      html: options.html,
+      messageId: result.messageId,
+      inReplyTo: original.messageId,
+      references: references.join(' '),
+    });
+
     return {
       messageId: result.messageId ?? '',
       status: 'sent',
@@ -161,6 +214,16 @@ export default class SmtpService {
       text: fullBody,
     });
 
+    // Save a copy to the Sent folder via IMAP
+    await this.saveSentCopy(accountName, account, {
+      to: options.to.join(', '),
+      cc: options.cc?.join(', '),
+      subject,
+      body: fullBody,
+      html: false,
+      messageId: result.messageId,
+    });
+
     return {
       messageId: result.messageId ?? '',
       status: 'sent',
@@ -212,6 +275,18 @@ export default class SmtpService {
 
     // Delete the draft after successful send
     await this.imapService.deleteDraft(accountName, draftId, draftsPath);
+
+    // Save a copy to the Sent folder via IMAP
+    await this.saveSentCopy(accountName, account, {
+      to,
+      cc,
+      subject: draft.subject,
+      body: draft.bodyHtml ?? draft.bodyText ?? '',
+      html: !!draft.bodyHtml,
+      messageId: result.messageId,
+      inReplyTo: draft.inReplyTo,
+      references: draft.references?.join(' '),
+    });
 
     return {
       messageId: result.messageId ?? '',
