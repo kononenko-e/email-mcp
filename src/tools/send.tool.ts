@@ -9,13 +9,25 @@ import { validateInputLength } from '../safety/validation.js';
 
 import type SmtpService from '../services/smtp.service.js';
 
+/** Zod schema for an attachment descriptor (file path + optional filename/contentType). */
+const attachmentSchema = z
+  .object({
+    path: z.string().describe('Absolute or relative path to the file on disk'),
+    filename: z.string().optional().describe('Display filename (defaults to the file basename)'),
+    contentType: z
+      .string()
+      .optional()
+      .describe('MIME type (auto-detected from extension if not provided)'),
+  })
+  .describe('Attachment — file to attach to the email');
+
 export default function registerSendTools(server: McpServer, smtpService: SmtpService): void {
   // ---------------------------------------------------------------------------
   // send_email
   // ---------------------------------------------------------------------------
   server.tool(
     'send_email',
-    'Send a new email. Supports plain text or HTML body, CC, and BCC.',
+    'Send a new email. Supports plain text or HTML body, CC, BCC, and file attachments.',
     {
       account: z.string().describe('Account name from list_accounts'),
       to: z.array(z.string().email()).min(1).describe('Recipient email addresses'),
@@ -24,6 +36,10 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
       cc: z.array(z.string().email()).optional().describe('CC recipients'),
       bcc: z.array(z.string().email()).optional().describe('BCC recipients'),
       html: z.boolean().default(false).describe('Send as HTML (default: plain text)'),
+      attachments: z
+        .array(attachmentSchema)
+        .optional()
+        .describe('File attachments (file paths). Total size must not exceed 25 MB.'),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     async (params) => {
@@ -72,7 +88,7 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
   // ---------------------------------------------------------------------------
   server.tool(
     'reply_email',
-    'Reply to an email with proper threading (In-Reply-To & References headers). Use get_email first to read the original.',
+    'Reply to an email with proper threading (In-Reply-To & References headers). Use get_email first to read the original. Supports file attachments.',
     {
       account: z.string().describe('Account name from list_accounts'),
       emailId: z.string().describe('Email ID to reply to (from list_emails or get_email)'),
@@ -80,6 +96,10 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
       body: z.string().describe('Reply body content'),
       replyAll: z.boolean().default(false).describe('Reply to all recipients'),
       html: z.boolean().default(false).describe('Send as HTML'),
+      attachments: z
+        .array(attachmentSchema)
+        .optional()
+        .describe('File attachments (file paths). Total size must not exceed 25 MB.'),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     async (params) => {
@@ -126,7 +146,7 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
   // ---------------------------------------------------------------------------
   server.tool(
     'forward_email',
-    'Forward an email to new recipients with optional additional message. Original email is quoted below.',
+    'Forward an email to new recipients with optional additional message. Original email is quoted below. Supports file attachments.',
     {
       account: z.string().describe('Account name from list_accounts'),
       emailId: z.string().describe('Email ID to forward (from list_emails or get_email)'),
@@ -134,6 +154,10 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
       to: z.array(z.string().email()).min(1).describe('Forward to these recipients'),
       body: z.string().optional().describe('Additional message above the forwarded content'),
       cc: z.array(z.string().email()).optional().describe('CC recipients'),
+      attachments: z
+        .array(attachmentSchema)
+        .optional()
+        .describe('File attachments (file paths). Total size must not exceed 25 MB.'),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     async (params) => {

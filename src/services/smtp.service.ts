@@ -6,6 +6,8 @@
 
 import type { IConnectionManager } from '../connections/types.js';
 import type RateLimiter from '../safety/rate-limiter.js';
+import type { AttachmentInput } from '../safety/validation.js';
+import { buildNodemailerAttachments, validateAttachments } from '../safety/validation.js';
 import type { SendResult } from '../types/index.js';
 import type ImapService from './imap.service.js';
 
@@ -29,21 +31,32 @@ export default class SmtpService {
       cc?: string[];
       bcc?: string[];
       html?: boolean;
+      attachments?: AttachmentInput[];
     },
   ): Promise<SendResult> {
     this.checkRateLimit(accountName);
 
+    if (options.attachments?.length) {
+      await validateAttachments(options.attachments);
+    }
+
     const account = this.connections.getAccount(accountName);
     const transport = await this.connections.getSmtpTransport(accountName);
 
-    const result = await transport.sendMail({
+    const mailOptions: Record<string, unknown> = {
       from: account.fullName ? `"${account.fullName}" <${account.email}>` : account.email,
       to: options.to.join(', '),
       cc: options.cc?.join(', '),
       bcc: options.bcc?.join(', '),
       subject: options.subject,
       ...(options.html ? { html: options.body } : { text: options.body }),
-    });
+    };
+
+    if (options.attachments?.length) {
+      mailOptions.attachments = buildNodemailerAttachments(options.attachments);
+    }
+
+    const result = await transport.sendMail(mailOptions);
 
     // Save a copy to the Sent folder via IMAP
     await this.saveSentCopy(accountName, account, {
@@ -53,6 +66,7 @@ export default class SmtpService {
       body: options.body,
       html: options.html,
       messageId: result.messageId,
+      attachments: options.attachments,
     });
 
     return {
@@ -73,6 +87,7 @@ export default class SmtpService {
       messageId?: string;
       inReplyTo?: string;
       references?: string;
+      attachments?: AttachmentInput[];
     },
   ): Promise<void> {
     try {
@@ -86,6 +101,7 @@ export default class SmtpService {
         messageId: options.messageId,
         inReplyTo: options.inReplyTo,
         references: options.references,
+        attachments: options.attachments,
       });
     } catch {
       // Non-critical: don't fail the send if Sent append fails
@@ -104,9 +120,14 @@ export default class SmtpService {
       body: string;
       replyAll?: boolean;
       html?: boolean;
+      attachments?: AttachmentInput[];
     },
   ): Promise<SendResult> {
     this.checkRateLimit(accountName);
+
+    if (options.attachments?.length) {
+      await validateAttachments(options.attachments);
+    }
 
     const account = this.connections.getAccount(accountName);
     const original = await this.imapService.getEmail(accountName, options.emailId, options.mailbox);
@@ -139,7 +160,7 @@ export default class SmtpService {
 
     const transport = await this.connections.getSmtpTransport(accountName);
 
-    const result = await transport.sendMail({
+    const mailOptions: Record<string, unknown> = {
       from: account.fullName ? `"${account.fullName}" <${account.email}>` : account.email,
       to: to.join(', '),
       cc: cc.length > 0 ? cc.join(', ') : undefined,
@@ -147,7 +168,13 @@ export default class SmtpService {
       inReplyTo: original.messageId,
       references: references.join(' '),
       ...(options.html ? { html: options.body } : { text: options.body }),
-    });
+    };
+
+    if (options.attachments?.length) {
+      mailOptions.attachments = buildNodemailerAttachments(options.attachments);
+    }
+
+    const result = await transport.sendMail(mailOptions);
 
     // Save a copy to the Sent folder via IMAP
     await this.saveSentCopy(accountName, account, {
@@ -159,6 +186,7 @@ export default class SmtpService {
       messageId: result.messageId,
       inReplyTo: original.messageId,
       references: references.join(' '),
+      attachments: options.attachments,
     });
 
     return {
@@ -179,9 +207,14 @@ export default class SmtpService {
       to: string[];
       body?: string;
       cc?: string[];
+      attachments?: AttachmentInput[];
     },
   ): Promise<SendResult> {
     this.checkRateLimit(accountName);
+
+    if (options.attachments?.length) {
+      await validateAttachments(options.attachments);
+    }
 
     const account = this.connections.getAccount(accountName);
     const original = await this.imapService.getEmail(accountName, options.emailId, options.mailbox);
@@ -206,13 +239,19 @@ export default class SmtpService {
 
     const transport = await this.connections.getSmtpTransport(accountName);
 
-    const result = await transport.sendMail({
+    const mailOptions: Record<string, unknown> = {
       from: account.fullName ? `"${account.fullName}" <${account.email}>` : account.email,
       to: options.to.join(', '),
       cc: options.cc?.join(', '),
       subject,
       text: fullBody,
-    });
+    };
+
+    if (options.attachments?.length) {
+      mailOptions.attachments = buildNodemailerAttachments(options.attachments);
+    }
+
+    const result = await transport.sendMail(mailOptions);
 
     // Save a copy to the Sent folder via IMAP
     await this.saveSentCopy(accountName, account, {
@@ -222,6 +261,7 @@ export default class SmtpService {
       body: fullBody,
       html: false,
       messageId: result.messageId,
+      attachments: options.attachments,
     });
 
     return {

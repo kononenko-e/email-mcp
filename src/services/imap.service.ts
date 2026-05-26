@@ -4,8 +4,12 @@
  * No MCP dependency — fully unit-testable.
  */
 
+import { readFile } from 'node:fs/promises';
+import { basename, extname } from 'node:path';
 import type { ImapFlow } from 'imapflow';
+import { lookup } from 'mime-types';
 import type { IConnectionManager } from '../connections/types.js';
+import type { AttachmentInput } from '../safety/validation.js';
 import { sanitizeMailboxName, sanitizeSearchQuery } from '../safety/validation.js';
 import type {
   AttachmentMeta,
@@ -1054,6 +1058,77 @@ export default class ImapService {
   }
 
   /**
+   * Build a raw RFC 822 message with optional attachments (multipart/mixed).
+   */
+  private static async buildRawMessage(params: {
+    headers: string[];
+    body: string;
+    html?: boolean;
+    attachments?: AttachmentInput[];
+  }): Promise<Buffer> {
+    // No attachments — simple single-part message
+    if (!params.attachments?.length) {
+      const raw = `${params.headers.join('\r\n')}\r\n\r\n${params.body}`;
+      return Buffer.from(raw);
+    }
+
+    const boundary = `----=_email-mcp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+    const lines: string[] = [...params.headers];
+
+    // Replace Content-Type header with multipart/mixed
+    const ctIdx = lines.findIndex((h) => h.toLowerCase().startsWith('content-type:'));
+    if (ctIdx >= 0) {
+      lines.splice(ctIdx, 1);
+    }
+    lines.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+
+    const parts: string[] = [];
+    parts.push(`--${boundary}`);
+
+    // Body part
+    const bodyContentType = params.html ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8';
+    parts.push(`Content-Type: ${bodyContentType}`);
+    parts.push('Content-Transfer-Encoding: 8bit');
+    parts.push('');
+    parts.push(params.body);
+
+    // Attachment parts — read all files in parallel
+    const attachmentParts = await Promise.all(
+      params.attachments.map(async (att) => {
+        const filename = att.filename ?? basename(att.path);
+        const mimeType = lookup(extname(att.path));
+        const contentType = att.contentType ?? (mimeType || 'application/octet-stream');
+        const fileData = await readFile(att.path);
+
+        const attLines: string[] = [];
+        attLines.push(`--${boundary}`);
+        attLines.push(`Content-Type: ${contentType}; name="${filename}"`);
+        attLines.push('Content-Transfer-Encoding: base64');
+        attLines.push(`Content-Disposition: attachment; filename="${filename}"`);
+        attLines.push('');
+
+        // Base64 encode in 76-char lines (RFC 2045)
+        const b64 = fileData.toString('base64');
+        for (let i = 0; i < b64.length; i += 76) {
+          attLines.push(b64.slice(i, i + 76));
+        }
+
+        return attLines;
+      }),
+    );
+
+    attachmentParts.forEach((attLines) => {
+      parts.push(...attLines);
+    });
+
+    parts.push(`--${boundary}--`);
+
+    const raw = `${lines.join('\r\n')}\r\n\r\n${parts.join('\r\n')}`;
+    return Buffer.from(raw);
+  }
+
+  /**
    * Append a sent message copy to the Sent folder via IMAP.
    * Used by SmtpService to keep a server-side copy after SMTP send.
    */
@@ -1070,6 +1145,7 @@ export default class ImapService {
       messageId?: string;
       inReplyTo?: string;
       references?: string;
+      attachments?: AttachmentInput[];
     },
   ): Promise<void> {
     const client = await this.connections.getImapClient(accountName);
@@ -1095,9 +1171,14 @@ export default class ImapService {
     const contentType = options.html ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8';
     headers.push(`Content-Type: ${contentType}`);
 
-    const rawMessage = `${headers.join('\r\n')}\r\n\r\n${options.body}`;
+    const rawMessage = await ImapService.buildRawMessage({
+      headers,
+      body: options.body,
+      html: options.html,
+      attachments: options.attachments,
+    });
 
-    await client.append(sentPath, Buffer.from(rawMessage), ['\\Seen']);
+    await client.append(sentPath, rawMessage, ['\\Seen']);
   }
 
   /**

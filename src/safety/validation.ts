@@ -1,5 +1,9 @@
 /** Input validation and sanitization utilities. */
 
+import { stat } from 'node:fs/promises';
+import { basename, extname } from 'node:path';
+import { lookup } from 'mime-types';
+
 /**
  * Validate and sanitize an IMAP mailbox name.
  * Rejects names containing IMAP wildcard characters (`*`, `%`) or empty strings.
@@ -118,4 +122,71 @@ export function validateInputLength(input: string, maxLength: number, fieldName:
   if (input.length > maxLength) {
     throw new Error(`${fieldName} exceeds maximum length of ${maxLength} characters`);
   }
+}
+
+/** Maximum total attachment size in bytes (25 MB). */
+export const MAX_ATTACHMENT_TOTAL_SIZE = 25 * 1024 * 1024;
+
+/**
+ * Attachment descriptor using a local file path.
+ */
+export interface AttachmentInput {
+  /** Absolute or relative path to the file on disk. */
+  path: string;
+  /** Optional display filename (defaults to the basename of path). */
+  filename?: string;
+  /** Optional MIME type (auto-detected from extension if not provided). */
+  contentType?: string;
+}
+
+/**
+ * Validate that the total size of attachment files does not exceed the limit.
+ * Also verifies that each file exists and is readable.
+ * @param attachments - Array of attachment descriptors.
+ */
+export async function validateAttachments(attachments: AttachmentInput[]): Promise<void> {
+  if (!attachments || attachments.length === 0) return;
+
+  const sizes = await Promise.all(
+    attachments.map(async (att) => {
+      if (!att.path || att.path.trim().length === 0) {
+        throw new Error('Attachment path must not be empty');
+      }
+
+      let stats: { size: number };
+      try {
+        stats = await stat(att.path);
+      } catch {
+        throw new Error(`Attachment file not found or not readable: ${att.path}`);
+      }
+      return stats.size;
+    }),
+  );
+
+  const totalSize = sizes.reduce((sum, size) => sum + size, 0);
+
+  if (totalSize > MAX_ATTACHMENT_TOTAL_SIZE) {
+    const mb = (totalSize / (1024 * 1024)).toFixed(1);
+    throw new Error(
+      `Total attachment size (${mb} MB) exceeds maximum of ${MAX_ATTACHMENT_TOTAL_SIZE / (1024 * 1024)} MB`,
+    );
+  }
+}
+
+/**
+ * Build nodemailer-compatible attachment objects from AttachmentInput[].
+ */
+export function buildNodemailerAttachments(
+  attachments: AttachmentInput[],
+): { filename?: string; path?: string; contentType?: string | false }[] {
+  return attachments.map((att) => {
+    const filename = att.filename ?? basename(att.path);
+    const mimeType = lookup(extname(att.path));
+    const contentType = att.contentType ?? (mimeType || undefined);
+    return {
+      filename,
+      path: att.path,
+      contentType,
+    };
+  });
 }

@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises';
 import type { IConnectionManager } from '../connections/types.js';
 import type RateLimiter from '../safety/rate-limiter.js';
 import type ImapService from './imap.service.js';
@@ -125,6 +126,56 @@ describe('SmtpService', () => {
       const call = transport.sendMail.mock.calls[0][0];
       expect(call.html).toBe('<h1>Hello</h1>');
       expect(call.text).toBeUndefined();
+    });
+
+    it('includes attachments when provided', async () => {
+      const tmpFile = '/tmp/test-attachment.pdf';
+      await writeFile(tmpFile, Buffer.from('%PDF-1.4 fake pdf content'));
+      await service.sendEmail('test', {
+        to: ['a@example.com'],
+        subject: 'With attachment',
+        body: 'See attached',
+        attachments: [{ path: tmpFile, filename: 'report.pdf', contentType: 'application/pdf' }],
+      });
+
+      const call = transport.sendMail.mock.calls[0][0];
+      expect(call.attachments).toBeDefined();
+      expect(call.attachments).toHaveLength(1);
+      expect(call.attachments[0]).toEqual({
+        filename: 'report.pdf',
+        path: tmpFile,
+        contentType: 'application/pdf',
+      });
+    });
+
+    it('includes multiple attachments', async () => {
+      const f1 = '/tmp/test-file1.pdf';
+      const f2 = '/tmp/test-file2.jpg';
+      await writeFile(f1, Buffer.from('%PDF-1.4'));
+      await writeFile(f2, Buffer.from('\xff\xd8\xff\xe0'));
+      await service.sendEmail('test', {
+        to: ['a@example.com'],
+        subject: 'Multiple files',
+        body: 'See attached',
+        attachments: [{ path: f1 }, { path: f2, filename: 'photo.jpg' }],
+      });
+
+      const call = transport.sendMail.mock.calls[0][0];
+      expect(call.attachments).toHaveLength(2);
+      expect(call.attachments[0].path).toBe(f1);
+      expect(call.attachments[1].path).toBe(f2);
+      expect(call.attachments[1].filename).toBe('photo.jpg');
+    });
+
+    it('does not include attachments key when none provided', async () => {
+      await service.sendEmail('test', {
+        to: ['a@example.com'],
+        subject: 'No attachments',
+        body: 'Just text',
+      });
+
+      const call = transport.sendMail.mock.calls[0][0];
+      expect(call.attachments).toBeUndefined();
     });
   });
 });

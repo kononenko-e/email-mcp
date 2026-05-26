@@ -1,7 +1,11 @@
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
+  MAX_ATTACHMENT_TOTAL_SIZE,
   sanitizeMailboxName,
   sanitizeSearchQuery,
   sanitizeTemplateVariable,
+  validateAttachments,
   validateInputLength,
   validateLabelName,
   validateWebhookUrl,
@@ -171,5 +175,66 @@ describe('validateInputLength', () => {
 
   it('allows under max length', () => {
     expect(() => validateInputLength('ab', 5, 'name')).not.toThrow();
+  });
+});
+
+describe('validateAttachments', () => {
+  const tmpDir = '/tmp/email-mcp-test-attachments';
+
+  beforeAll(async () => {
+    await mkdir(tmpDir, { recursive: true });
+  });
+
+  afterAll(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('does not throw for empty array', async () => {
+    await expect(validateAttachments([])).resolves.not.toThrow();
+  });
+
+  it('does not throw for undefined', async () => {
+    await expect(validateAttachments(undefined as unknown as [])).resolves.not.toThrow();
+  });
+
+  it('does not throw for a single valid file', async () => {
+    const filePath = join(tmpDir, 'test.txt');
+    await writeFile(filePath, 'Hello, world!');
+    await expect(validateAttachments([{ path: filePath }])).resolves.not.toThrow();
+  });
+
+  it('does not throw for multiple valid files under 25 MB', async () => {
+    const f1 = join(tmpDir, 'a.txt');
+    const f2 = join(tmpDir, 'b.txt');
+    await writeFile(f1, 'A'.repeat(1000));
+    await writeFile(f2, 'B'.repeat(2000));
+    await expect(validateAttachments([{ path: f1 }, { path: f2 }])).resolves.not.toThrow();
+  });
+
+  it('throws when a file does not exist', async () => {
+    await expect(
+      validateAttachments([{ path: '/tmp/nonexistent-file-xyz123.bin' }]),
+    ).rejects.toThrow('Attachment file not found or not readable');
+  });
+
+  it('throws when path is empty', async () => {
+    await expect(validateAttachments([{ path: '' }])).rejects.toThrow(
+      'Attachment path must not be empty',
+    );
+  });
+
+  it('throws when total size exceeds 25 MB', async () => {
+    const bigFile = join(tmpDir, 'big.bin');
+    await writeFile(bigFile, Buffer.alloc(MAX_ATTACHMENT_TOTAL_SIZE + 1));
+    await expect(validateAttachments([{ path: bigFile }])).rejects.toThrow('Total attachment size');
+  });
+
+  it('accepts files exactly at 25 MB total', async () => {
+    const f1 = join(tmpDir, 'half1.bin');
+    const f2 = join(tmpDir, 'half2.bin');
+    const half = Math.floor(MAX_ATTACHMENT_TOTAL_SIZE / 2);
+    await writeFile(f1, Buffer.alloc(half));
+    await writeFile(f2, Buffer.alloc(half));
+    await expect(validateAttachments([{ path: f1 }, { path: f2 }])).resolves.not.toThrow();
   });
 });
