@@ -1,6 +1,6 @@
 {
   "name": "@kononenko-e/email-mcp",
-  "version": "0.2.6",
+  "version": "0.3.0",
   "mcpName": "io.github.kononenko-e/email-mcp",
   "description": "Email MCP server with IMAP + SMTP support",
   "type": "module",
