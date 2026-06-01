@@ -13,6 +13,8 @@ function createMockImapClient() {
     list: vi.fn().mockResolvedValue([]),
     status: vi.fn().mockResolvedValue({ messages: 5, unseen: 2 }),
     fetch: vi.fn().mockReturnValue((async function* fetchMock() {})()),
+    fetchOne: vi.fn().mockResolvedValue(null),
+    download: vi.fn().mockResolvedValue(null),
     search: vi.fn().mockResolvedValue([]),
     messageMove: vi.fn().mockResolvedValue(true),
     messageDelete: vi.fn().mockResolvedValue(true),
@@ -163,6 +165,84 @@ describe('ImapService', () => {
       await service.setFlags('test', '10', 'INBOX', 'flag');
 
       expect(client.messageFlagsAdd).toHaveBeenCalledWith('10', ['\\Flagged'], { uid: true });
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // getEmail — MIME decoding (regression: base64 multipart leaked raw)
+  // -----------------------------------------------------------------------
+
+  describe('getEmail MIME decoding', () => {
+    it('decodes base64-encoded multipart UTF-8 bodies (no raw MIME leak)', async () => {
+      // "Письмо с генерации" base64-encoded as UTF-8, like mail.ru sends.
+      const encoded = Buffer.from('Письмо с генерации', 'utf-8').toString('base64');
+      const rawMime = [
+        'From: sender@example.com',
+        'To: test@example.com',
+        'Subject: Test',
+        'MIME-Version: 1.0',
+        'Content-Type: multipart/alternative; boundary="----=_mimepart_abc"',
+        '',
+        '------=_mimepart_abc',
+        'Content-Type: text/plain; charset=UTF-8',
+        'Content-Transfer-Encoding: base64',
+        '',
+        encoded,
+        '------=_mimepart_abc--',
+        '',
+      ].join('\r\n');
+
+      client.fetchOne.mockResolvedValue({
+        uid: 7,
+        envelope: {
+          from: [{ name: 'Sender', address: 'sender@example.com' }],
+          to: [{ address: 'test@example.com' }],
+          subject: 'Test',
+          messageId: '<abc@example.com>',
+        },
+        flags: new Set(['\\Seen']),
+        bodyStructure: { type: 'multipart', subtype: 'alternative' },
+        source: Buffer.from(rawMime, 'utf-8'),
+      });
+
+      const email = await service.getEmail('test', '7', 'INBOX');
+
+      expect(email.bodyText?.trim()).toBe('Письмо с генерации');
+      // Must NOT contain raw MIME boundaries or base64 string.
+      expect(email.bodyText).not.toContain('mimepart_abc');
+      expect(email.bodyText).not.toContain('Content-Transfer-Encoding');
+      expect(email.bodyText).not.toContain(encoded);
+    });
+
+    it('decodes quoted-printable bodies', async () => {
+      const rawMime = [
+        'From: sender@example.com',
+        'To: test@example.com',
+        'Subject: QP',
+        'MIME-Version: 1.0',
+        'Content-Type: text/plain; charset=UTF-8',
+        'Content-Transfer-Encoding: quoted-printable',
+        '',
+        '=D0=9F=D1=80=D0=B8=D0=B2=D0=B5=D1=82',
+        '',
+      ].join('\r\n');
+
+      client.fetchOne.mockResolvedValue({
+        uid: 8,
+        envelope: {
+          from: [{ address: 'sender@example.com' }],
+          to: [{ address: 'test@example.com' }],
+          subject: 'QP',
+          messageId: '<qp@example.com>',
+        },
+        flags: new Set(),
+        bodyStructure: { type: 'text', subtype: 'plain' },
+        source: Buffer.from(rawMime, 'utf-8'),
+      });
+
+      const email = await service.getEmail('test', '8', 'INBOX');
+
+      expect(email.bodyText?.trim()).toBe('Привет');
     });
   });
 });

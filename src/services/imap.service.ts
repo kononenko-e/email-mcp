@@ -7,6 +7,7 @@
 import { readFile } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import type { ImapFlow } from 'imapflow';
+import { simpleParser } from 'mailparser';
 import { lookup } from 'mime-types';
 import type { IConnectionManager } from '../connections/types.js';
 import type { AttachmentInput } from '../safety/validation.js';
@@ -146,58 +147,41 @@ function messageToEmailMeta(msg: Record<string, unknown>): EmailMeta {
   };
 }
 
-async function messageToEmail(
-  msg: Record<string, unknown>,
-  client: ImapFlow,
-  uid: number,
-): Promise<Email> {
+async function messageToEmail(msg: Record<string, unknown>): Promise<Email> {
   const meta = messageToEmailMeta(msg);
   const envelope = (msg.envelope ?? {}) as Record<string, unknown>;
 
-  // Parse full source for body content
+  // Parse the full raw source with mailparser. This correctly decodes
+  // multipart MIME, Content-Transfer-Encoding (base64, quoted-printable),
+  // and charset — unlike naive header/body splitting which leaks raw MIME
+  // boundaries and base64 strings into the body (breaks forward/reply).
   let bodyText: string | undefined;
   let bodyHtml: string | undefined;
   const headers: Record<string, string> = {};
 
   if (msg.source && Buffer.isBuffer(msg.source)) {
-    const raw = msg.source.toString('utf-8');
-    const headerEnd = raw.indexOf('\r\n\r\n');
-    if (headerEnd >= 0) {
-      // Parse headers
-      const headerSection = raw.slice(0, headerEnd);
-      headerSection.split('\r\n').forEach((line) => {
-        const colonIdx = line.indexOf(':');
-        if (colonIdx > 0 && !line.startsWith(' ') && !line.startsWith('\t')) {
-          const key = line.slice(0, colonIdx).trim().toLowerCase();
-          const value = line.slice(colonIdx + 1).trim();
-          headers[key] = value;
-        }
+    try {
+      const parsed = await simpleParser(msg.source, {
+        skipImageLinks: true,
       });
 
-      const body = raw.slice(headerEnd + 4);
-      // Simple content type detection
-      const contentType = headers['content-type'] ?? '';
-      if (contentType.includes('text/html')) {
-        bodyHtml = body;
-      } else {
-        bodyText = body;
-      }
-    }
-  }
+      bodyText = parsed.text ?? undefined;
+      bodyHtml = typeof parsed.html === 'string' ? parsed.html : undefined;
 
-  // Try to get text/html parts via download if body parsing was simple
-  try {
-    const textPart = await client.download(String(uid), '1', { uid: true });
-    if (textPart?.content) {
-      const chunks: Buffer[] = [];
-      // eslint-disable-next-line no-restricted-syntax
-      for await (const chunk of textPart.content) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      }
-      bodyText = Buffer.concat(chunks).toString('utf-8');
+      // Flatten parsed headers into a simple string map.
+      parsed.headers.forEach((value, key) => {
+        if (typeof value === 'string') {
+          headers[key] = value;
+        } else if (value && typeof value === 'object' && 'text' in value) {
+          headers[key] = String((value as { text: unknown }).text);
+        } else {
+          headers[key] = String(value);
+        }
+      });
+    } catch {
+      // Fall back to raw decode if mailparser fails on a malformed message.
+      bodyText = msg.source.toString('utf-8');
     }
-  } catch {
-    // Part may not exist
   }
 
   return {
@@ -429,7 +413,7 @@ export default class ImapService {
         throw new Error(`Email ${emailId} not found in ${mailbox}`);
       }
 
-      return await messageToEmail(msg as unknown as Record<string, unknown>, client, uid);
+      return await messageToEmail(msg as unknown as Record<string, unknown>);
     } finally {
       lock.release();
     }
@@ -1528,8 +1512,7 @@ export default class ImapService {
         { uid: true },
       )) {
         const raw = msg as unknown as Record<string, unknown>;
-        const uid = raw.uid as number;
-        messages.push(await messageToEmail(raw, client, uid));
+        messages.push(await messageToEmail(raw));
       }
 
       // Sort chronologically

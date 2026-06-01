@@ -223,19 +223,24 @@ export default class SmtpService {
       ? original.subject
       : `Fwd: ${original.subject}`;
 
-    // Build forwarded message body
+    const fromLabel = original.from.name
+      ? `${original.from.name} <${original.from.address}>`
+      : original.from.address;
+    const toLabel = original.to.map((a) => a.address).join(', ');
+
+    // Plain-text forwarded body
     const forwardHeader = [
       '',
       '---------- Forwarded message ----------',
-      `From: ${original.from.name ? `${original.from.name} <${original.from.address}>` : original.from.address}`,
+      `From: ${fromLabel}`,
       `Date: ${original.date}`,
       `Subject: ${original.subject}`,
-      `To: ${original.to.map((a) => a.address).join(', ')}`,
+      `To: ${toLabel}`,
       '',
     ].join('\n');
 
-    const originalBody = original.bodyText ?? original.bodyHtml ?? '';
-    const fullBody = (options.body ?? '') + forwardHeader + originalBody;
+    const originalText = original.bodyText ?? '';
+    const fullBody = (options.body ?? '') + forwardHeader + originalText;
 
     const transport = await this.connections.getSmtpTransport(accountName);
 
@@ -246,6 +251,30 @@ export default class SmtpService {
       subject,
       text: fullBody,
     };
+
+    // If the original carried HTML, forward an HTML version too so the
+    // recipient sees correctly rendered content (mailparser has already
+    // decoded base64/quoted-printable and charset for us).
+    let htmlForwarded = false;
+    if (original.bodyHtml) {
+      const escapeHtml = (s: string) =>
+        s
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      const intro = options.body ? `<p>${escapeHtml(options.body).replace(/\n/g, '<br>')}</p>` : '';
+      const htmlHeader = [
+        '<div>',
+        '---------- Forwarded message ----------<br>',
+        `From: ${escapeHtml(fromLabel)}<br>`,
+        `Date: ${escapeHtml(original.date)}<br>`,
+        `Subject: ${escapeHtml(original.subject)}<br>`,
+        `To: ${escapeHtml(toLabel)}<br>`,
+        '</div><br>',
+      ].join('');
+      mailOptions.html = intro + htmlHeader + original.bodyHtml;
+      htmlForwarded = true;
+    }
 
     if (options.attachments?.length) {
       mailOptions.attachments = buildNodemailerAttachments(options.attachments);
@@ -258,8 +287,8 @@ export default class SmtpService {
       to: options.to.join(', '),
       cc: options.cc?.join(', '),
       subject,
-      body: fullBody,
-      html: false,
+      body: htmlForwarded ? (mailOptions.html as string) : fullBody,
+      html: htmlForwarded,
       messageId: result.messageId,
       attachments: options.attachments,
     });
